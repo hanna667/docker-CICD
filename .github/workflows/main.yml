@@ -36,6 +36,13 @@ jobs:
           # Start nginx (default command in nginx image)
           EOF
 
+      - name: Set sanitized arch
+        id: prep
+        run: |
+          echo "ARCH_TAG=${ARCH//\//-}" >> $GITHUB_ENV
+        env:
+          ARCH: ${{ matrix.arch }}
+
       - name: Set up QEMU (for multi-arch builds)
         uses: docker/setup-qemu-action@v3
 
@@ -56,19 +63,19 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ matrix.arch }}
           push: false
-          tags: ghcr.io/${{ github.repository }}:${{ replace(matrix.arch, '/', '-') }}
+          tags: ghcr.io/${{ github.repository }}:${{ env.ARCH_TAG }}
 
       - name: Docker Scout Scan
         uses: docker/scout-action@v1
         with:
-          image: ghcr.io/${{ github.repository }}:${{ replace(matrix.arch, '/', '-') }}
-          sarif-file: scout-results-${{ replace(matrix.arch, '/', '-') }}.sarif
+          image: ghcr.io/${{ github.repository }}:${{ env.ARCH_TAG }}
+          sarif-file: scout-results-${{ env.ARCH_TAG }}.sarif
           only-severities: critical,high,medium
 
       - name: Upload SARIF file (Security scan results)
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: scout-results-${{ replace(matrix.arch, '/', '-') }}.sarif
+          sarif_file: scout-results-${{ env.ARCH_TAG }}.sarif
 
       - name: Push Docker image to GHCR
         uses: docker/build-push-action@v5
@@ -78,5 +85,5 @@ jobs:
           platforms: ${{ matrix.arch }}
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:${{ replace(matrix.arch, '/', '-') }}
+            ghcr.io/${{ github.repository }}:${{ env.ARCH_TAG }}
             ghcr.io/${{ github.repository }}:latest
