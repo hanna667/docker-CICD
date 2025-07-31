@@ -1,46 +1,80 @@
-name: Build Multi-Arch Image
+name: Build and Deploy Web Server Docker Image
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  docker:
+  build-scan-push:
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
-          include:
-            - platform: linux/amd64
-              tag_suffix: linux-amd64
-            - platform: linux/arm64
-              tag_suffix: linux-arm64
-        
+        arch: [linux/amd64, linux/arm64]
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Create Dockerfile
+        run: |
+          cat <<'EOF' > Dockerfile
+          # Use an official lightweight web server image
+          FROM nginx:alpine
+
+          # Copy static website files to nginx's default public folder
+          COPY ./public /usr/share/nginx/html
+
+          # Expose port 80
+          EXPOSE 80
+
+          # Start nginx (default command in nginx image)
+          EOF
+
+      - name: Set up QEMU (for multi-arch builds)
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
-          platforms: ${{ matrix.platform }}
-          tags: ghcr.io/${{ github.repository }}:${{ matrix.tag_suffix }}
-
+          file: ./Dockerfile
+          platforms: ${{ matrix.arch }}
+          push: false
+          tags: ghcr.io/${{ github.repository }}:${{ matrix.arch }}
 
       - name: Docker Scout Scan
         uses: docker/scout-action@v1
         with:
           image: ghcr.io/${{ github.repository }}:${{ matrix.arch }}
-          only-severities: critical,high
+          sarif-file: scout-results-${{ matrix.arch }}.sarif
+          only-severities: critical,high,medium
+
+      - name: Upload SARIF file (Security scan results)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: scout-results-${{ matrix.arch }}.sarif
+
+      - name: Push Docker image to GHCR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ matrix.arch }}
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ matrix.arch }},ghcr.io/${{ github.repository }}:latest
