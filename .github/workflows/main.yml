@@ -9,9 +9,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [amd64, arm64]
-        platform: [linux/amd64, linux/arm64]
-      fail-fast: false
+          include:
+            - platform: linux/amd64
+              tag_suffix: linux-amd64
+            - platform: linux/arm64
+              tag_suffix: linux-arm64
+        
 
     steps:
       - name: Checkout repository
@@ -32,8 +35,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:${{ matrix.arch }}
-          platforms: linux/${{ matrix.arch }}
+          platforms: ${{ matrix.platform }}
+          tags: ghcr.io/${{ github.repository }}:${{ matrix.tag_suffix }}
+
 
       - name: Docker Scout Scan
         uses: docker/scout-action@v1
